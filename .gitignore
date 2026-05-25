@@ -1,0 +1,41 @@
+# Dependency directories
+node_modules/
+venv/
+.next/
+out/
+build/
+dist/
+
+# Python caching & builds
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# Local data & ML models (datasets and weights should not be committed)
+backend/dataset/
+backend/models/
+backend/torch_cache/
+torch_cache/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+frontend/.env
+frontend/.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp / Zip files
+*.zip
+*.tar.gz
+*.rar
+temp_dist/

@@ -1,0 +1,181 @@
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto:wght@300;400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: 'Roboto', 'Google Sans', sans-serif;
+  --font-heading: 'Google Sans', sans-serif;
+  
+  /* Google Teachable Machine Light Color Palette */
+  --bg-app: #f1f3f4;           /* Google gray background */
+  --bg-card: #ffffff;          /* Pure white cards */
+  --border-color: #e0e0e0;     /* Soft slate border */
+  
+  --text-primary: #202124;     /* Crisp charcoal */
+  --text-secondary: #5f6368;   /* Slate gray */
+  --text-muted: #80868b;       /* Muted gray */
+  
+  --brand-color: #1a73e8;       /* Google Blue */
+  --brand-hover: #1557b0;
+  --brand-light: #e8f0fe;
+  
+  --success: #0f9d58;           /* Google Green */
+  --success-light: #e6f4ea;
+  
+  --warning: #f4b400;           /* Google Yellow */
+  --error: #db4437;             /* Google Red */
+  --error-light: #fce8e6;
+  
+  /* Teachable Machine Class Palette corresponding to indices */
+  --class-color-0: #ff9800;     /* Orange */
+  --class-color-1: #1a73e8;     /* Google Blue */
+  --class-color-2: #0f9d58;     /* Google Green */
+  --class-color-3: #ab47bc;     /* Purple */
+  --class-color-4: #db4437;     /* Google Red */
+  --class-color-5: #009688;     /* Teal */
+  --class-color-6: #3f51b5;     /* Indigo */
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  overflow-x: hidden;
+  min-height: 100vh;
+  margin: 0;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Material design elevated panels matching Google standards */
+.material-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
+  transition: box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s;
+  overflow: hidden;
+}
+
+.material-card:hover {
+  box-shadow: 0 2px 6px 2px rgba(60,64,67,0.15), 0 1px 2px 0 rgba(60,64,67,0.3);
+}
+
+/* Custom Scrollbars for dense UI grids */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f3f4;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #dadce0;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #bdc1c6;
+}
+
+/* Thumbnail scroll gallery */
+.thumb-scroll::-webkit-scrollbar {
+  height: 5px;
+}
+
+.thumb-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.thumb-scroll::-webkit-scrollbar-thumb {
+  background: #cfd4d9;
+  border-radius: 3px;
+}
+
+.thumb-scroll::-webkit-scrollbar-thumb:hover {
+  background: #bdc1c6;
+}
+
+/* Active continuous recording webcam outline pulsing */
+@keyframes captureOutlinePulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(26, 115, 232, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(26, 115, 232, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(26, 115, 232, 0);
+  }
+}
+
+.capture-active {
+  animation: captureOutlinePulse 0.8s infinite;
+  background-color: var(--brand-hover) !important;
+  color: white !important;
+}
+
+/* Custom Prediction progress bar colors */
+.class-bar-0 { background-color: var(--class-color-0); }
+.class-bar-1 { background-color: var(--class-color-1); }
+.class-bar-2 { background-color: var(--class-color-2); }
+.class-bar-3 { background-color: var(--class-color-3); }
+.class-bar-4 { background-color: var(--class-color-4); }
+.class-bar-5 { background-color: var(--class-color-5); }
+.class-bar-6 { background-color: var(--class-color-6); }
+
+/* Custom class colors for borders and text */
+.class-text-0 { color: var(--class-color-0); }
+.class-text-1 { color: var(--class-color-1); }
+.class-text-2 { color: var(--class-color-2); }
+.class-text-3 { color: var(--class-color-3); }
+.class-text-4 { color: var(--class-color-4); }
+.class-text-5 { color: var(--class-color-5); }
+.class-text-6 { color: var(--class-color-6); }
+
+.class-bg-0 { background-color: var(--class-color-0); }
+.class-bg-1 { background-color: var(--class-color-1); }
+.class-bg-2 { background-color: var(--class-color-2); }
+.class-bg-3 { background-color: var(--class-color-3); }
+.class-bg-4 { background-color: var(--class-color-4); }
+.class-bg-5 { background-color: var(--class-color-5); }
+.class-bg-6 { background-color: var(--class-color-6); }
+
+/* Monaco Terminal override */
+.terminal-window {
+  background: #202124 !important;
+  color: #f1f3f4 !important;
+}
+
+/* Animations */
+.animate-fade-in {
+  animation: fadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Active Source Button Toggle styling */
+.source-btn-active {
+  background-color: var(--brand-light);
+  border-color: var(--brand-color);
+  color: var(--brand-color);
+}
+
+@keyframes flow {
+  to {
+    stroke-dashoffset: -1000;
+  }
+}
+
