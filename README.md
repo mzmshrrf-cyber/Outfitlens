@@ -58,7 +58,6 @@ Copy `.env.example` to `.env` at the repo root (and/or `frontend/.env.local`):
 See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 - Website: https://d6b0pwn1494r0.cloudfront.net  
-- API: https://6qmgad27k9.execute-api.us-east-1.amazonaws.com/api  
 
 Redeploy (AWS CLI only, no GitHub): `powershell -File scripts/deploy-aws.ps1`
 
