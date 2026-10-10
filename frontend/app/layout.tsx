@@ -2,8 +2,9 @@ import './globals.css';
 import React from 'react';
 
 export const metadata = {
-  title: 'Teachable Core - Custom Image Project',
-  description: 'Production-grade offline-first image classification clone of Google Teachable Machine using Next.js 15, PyTorch MobileNetV3 feature extraction, and fast scikit-learn classifiers.',
+  title: 'OutfitLens — Image Compare & Virtual Try-On',
+  description:
+    'OutfitLens compares visual similarity between images and generates AI virtual try-on previews. Not affiliated with Google Teachable Machine.',
 };
 
 export default function RootLayout({
@@ -13,7 +14,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="antialiased selection:bg-brand-500/35 selection:text-white">
+      <body className="antialiased selection:bg-[var(--brand-soft)] selection:text-[var(--ink)]">
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-white focus:px-3 focus:py-2 focus:shadow"
+        >
+          Skip to content
+        </a>
         {children}
       </body>
     </html>

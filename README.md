@@ -1,195 +1,164 @@
-# Teachable Core - Image Classifier Project Clone
+# OutfitLens
 
-A production-grade, offline-first image classification application built to mimic the workflows and user experience of **Google Teachable Machine Image Project**. 
+**OutfitLens** is a local-first visual app for:
 
-Built with a fast, modern stack combining **Next.js 15, FastAPI, PyTorch (MobileNetV3 backbone), and scikit-learn (Logistic Regression)**.
+1. **Image Compare** — visual similarity between two images (MobileNetV3 embeddings + cosine similarity), with clear limitations  
+2. **AI Virtual Try-On** — generative garment preview via [fal.ai FASHN Try-On v1.6](https://fal.ai/models/fal-ai/fashn/tryon/v1.6) (~$0.075/generation)  
+3. **Class Lab** (optional) — the original local image-classifier workflow (train / predict / export)
+
+This product is **not affiliated with Google Teachable Machine**.
 
 ---
 
-## Architecture Overview
-
-This clone uses a state-of-the-art hybrid approach for rapid local training on CPU:
+## Architecture
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                              FRONTEND (React + Next.js 15)             │
-│                                                                        │
-│   Webcam Feeds  ──[Canvas Frame Blobs]──► [API upload] ──► Zustand Store│
-│   Live prediction ◄──[Probabilities]───── [API predict] ◄── [Interval 300ms]│
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-                                    ▼ HTTP REST
-┌────────────────────────────────────────────────────────────────────────┐
-│                              BACKEND (FastAPI + Python)                │
-│                                                                        │
-│   1. /upload-sample ──► Saves UUID images to dataset/{class_name}/      │
-│   2. /train         ──► Passes images through MobileNetV3 small         │
-│                         extracts 576-dim feature embeddings            │
-│                         trains fast scikit-learn Logistic Regression   │
-│                         saves classifier to models/model.pkl           │
-│   3. /predict       ──► Preprocesses canvas JPEG, extracts features    │
-│                         predicts probabilities in real time (<15ms)    │
-└────────────────────────────────────────────────────────────────────────┘
+Frontend (Next.js 15 + React 19 + Zustand + Tailwind)
+        │  REST
+Backend (FastAPI)
+  ├─ /api/compare          → MobileNetV3 features + cosine similarity
+  ├─ /api/tryon            → fal.ai FASHN (requires FAL_KEY)
+  ├─ /api/fetch-product-image → SSRF-safe public URL → og:image
+  └─ /api/train|predict…   → Class Lab (unchanged ML path)
 ```
 
-1. **Pretrained Backbone**: PyTorch torchvision `mobilenet_v3_small` is utilized as a deep feature extractor. By stripping the final classification layers (`classifier = nn.Identity()`), we map each image to a dense $576$-dimensional embedding representation containing rich semantic shapes/textures.
-2. **Dynamic Classifier**: A scikit-learn `LogisticRegression` model is trained on top of the extracted embeddings. Fitting a logistic regression model on a few hundred embeddings takes less than **0.2 seconds on CPU**, yielding instant training and high-fidelity probabilities.
-3. **Reactive State**: Zustand maintains strict unified control over classes, sample previews, webcam initialization, training logs, confusion matrix outputs, and background real-time predict ticking (every 300ms).
+**Privacy:** Compare/try-on uploads are processed for the request and are not kept as a long-term gallery. Try-on images are sent to fal.ai when that mode is used. Never put `FAL_KEY` in `NEXT_PUBLIC_*` variables.
 
 ---
 
-## Core Features
+## Virtual try-on provider (Amazon Bedrock)
 
-- 🏷️ **Dynamic Classes**: Add, rename (folder is renamed dynamically on disk), and delete custom target classes.
-- 📸 **Camera Continuous Ingestion**: Dynamic "Hold-to-Record" webcam capture that extracts canvas frames and streams them to the dataset folders in real time.
-- 📂 **Multi-Selection Drag & Drop**: Batch upload folders of PNG, JPG, or WebP training samples.
-- ⚡ **Instant Model Training**: Features are extracted and Logistic Regression is fitted locally in seconds, outputting exact logs.
-- 🔮 **Live predictions & Confidence**: Active testing feeds webcam frames to the model every 300ms, driving fluid glassmorphic confidence progress bars.
-- 📦 **Model Export**: Stream and download the trained model bundle (`model.pkl`, `labels.json`, `metrics.json`) as a compressed ZIP file.
-- 📊 **Confusion Matrix**: Fully interactive per-class hit rates and confusion visualizers calculated inside the console dashboard.
+| Component | Model | Notes |
+|-----------|--------|--------|
+| Garment understanding | `amazon.nova-lite-v1:0` | Describes clothing from the product photo |
+| Try-on edit | `us.stability.stable-image-search-replace-v1:0` | Replaces clothing region (~$0.07/image typical) |
+| Image compare (AWS) | `amazon.titan-embed-image-v1` | Embedding similarity (serverless) |
+
+Nova Canvas / Titan Image Generator are **Legacy-EOL** on many accounts, so this stack uses **active** Bedrock models only. Auth is IAM / `aws configure` — no third-party API keys.
+
+**Limitations:** generative preview only; not accurate size/fit guarantees.
 
 ---
 
-## Directory Structure
+## Environment variables
 
+Copy `.env.example` to `.env` at the repo root (and/or `frontend/.env.local`):
+
+| Variable | Where | Required | Purpose |
+|----------|--------|----------|---------|
+| `NEXT_PUBLIC_API_URL` | Frontend | Yes | Backend API base, e.g. `http://localhost:8000/api` |
+| `PORT` | Backend | No | Default `8000` |
+| `AWS_REGION` | Backend | Yes (AWS) | e.g. `us-east-1` |
+| `BEDROCK_IMAGE_MODEL_ID` | Backend | No | Default Stability Search & Replace inference profile |
+| `BEDROCK_VISION_MODEL_ID` | Backend | No | Default Nova Lite |
+| `FRONTEND_ORIGIN` | Backend | No | Optional CORS allowlist in production |
+
+## Live AWS deployment
+
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+- Website: https://d6b0pwn1494r0.cloudfront.net  
+- API: https://6qmgad27k9.execute-api.us-east-1.amazonaws.com/api  
+
+Redeploy (AWS CLI only, no GitHub): `powershell -File scripts/deploy-aws.ps1`
+
+---
+
+## Local setup
+
+### Prerequisites
+
+- Node.js 18+
+- Python 3.11+ (3.13 works in this workspace)
+- Optional: Docker
+
+### Manual (recommended for development)
+
+```bash
+# Backend
+cd backend
+python -m venv venv
+# Windows:
+.\venv\Scripts\activate
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# Frontend (new terminal)
+cd frontend
+npm install --legacy-peer-deps
+# create .env.local with NEXT_PUBLIC_API_URL=http://localhost:8000/api
+npm run dev
 ```
-teachable-machine-clone/
-├── frontend/
-│   ├── app/                 # Next.js App Router (layout, pages, global CSS)
-│   ├── components/          # Reusable UI components (Sidebar, ClassCard, Predictor)
-│   ├── store/               # Zustand store for unified state management
-│   ├── services/            # API client service layer
-│   ├── public/              # Static assets
-│   ├── Dockerfile           # Multi-stage production build for Frontend
-│   ├── tailwind.config.ts   # Design token utilities
-│   └── package.json         # Node dependencies
-│
-├── backend/
-│   ├── app/
-│   │   ├── api/             # FastAPI endpoints (samples, model, train)
-│   │   ├── ml/              # PyTorch + scikit-learn training pipelines
-│   │   └── main.py          # FastAPI application entry point
-│   ├── dataset/             # Dataset storage partitioned by class name
-│   ├── models/              # Saved model.pkl, labels.json, and metrics.json
-│   ├── Dockerfile           # Python production build for Backend
-│   └── requirements.txt     # Python packages
-│
-├── docker-compose.yml       # Production-ready compose configuration
-└── README.md                # Documentation
+
+Or double-click `run.bat` on Windows (uses port **8000** for the API).
+
+- App: http://localhost:3000  
+- API docs: http://localhost:8000/docs  
+
+### Docker Compose
+
+```bash
+docker-compose up --build
 ```
 
 ---
 
-## Installation & Setup
+## Tests
 
-### Method A: Docker Compose (Recommended - Quickest)
+```bash
+cd backend
+.\venv\Scripts\python.exe -m pytest tests -v
+```
 
-Ensure you have **Docker** and **Docker Compose** installed.
-
-1. **Spin Up Containers**:
-   From the root directory, execute:
-   ```bash
-   docker-compose up --build
-   ```
-   *Note: On the first run, the backend will automatically download and cache the lightweight MobileNetV3 weights (~10MB) during the build layer. This guarantees 100% offline capability afterwards.*
-
-2. **Access Applications**:
-   - **Frontend Dashboard**: Open [http://localhost:3000](http://localhost:3000)
-   - **Backend API Docs**: Open [http://localhost:8000/docs](http://localhost:8000/docs)
+Covers cosine similarity, identical-image compare, SSRF blocks for localhost/private IPs, and try-on status shape.
 
 ---
 
-### Method B: Manual Local Setup (Development)
+## AWS deployment (cost-conscious)
 
-Ensure you have **NodeJS 18+** and **Python 3.11** installed.
+There is **no prior AWS IaC** in this repo. **AWS Q CLI (`q`) is not installed** on this machine.
 
-#### 1. Setup Backend ML Server
+### Suggested low-cost layout
 
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   ```
-2. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   # On Windows:
-   .\venv\Scripts\activate
-   # On macOS/Linux:
-   source venv/bin/activate
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Start development server:
-   ```bash
-   python app/main.py
-   ```
-   The backend server will launch on `http://localhost:8000`.
+| Service | Role | Cost notes |
+|---------|------|------------|
+| **App Runner** or **ECS Fargate** (small) | Backend API | Always-on small service ≈ low tens of USD/mo; scale-to-zero options vary |
+| **S3 + CloudFront** | Frontend static/`next export` or container | S3 near-free at low traffic; CloudFront pennies |
+| **Secrets Manager** or SSM Parameter Store | `FAL_KEY` | Parameter Store free tier / low cost |
+| **ECR** | Images | Storage cents/mo |
+
+**Paid / usage-based you should expect:**
+
+- fal.ai try-on generations (~$0.075 each) — billed by fal, not AWS  
+- AWS compute while the API is running  
+- Data transfer / CloudFront requests at scale  
+
+### Before creating paid resources
+
+The agent **will ask for confirmation** before provisioning App Runner/ECS/ALB or other billable stacks. Free-tier-only exploration (account identity, region list) is safe.
 
 ---
 
-#### 2. Setup Frontend Dashboard
+## Backups
 
-1. Navigate to the frontend directory:
-   ```bash
-   cd ../frontend
-   ```
-2. Install node dependencies:
-   ```bash
-   npm install
-   ```
-3. Start the Next.js development server:
-   ```bash
-   npm run dev
-   ```
-   Open [http://localhost:3000](http://localhost:3000) inside your web browser.
+A full local snapshot was created before product changes:
+
+`Teachable-Machine-BACKUP-20261010-152047` (sibling folder on the Desktop).
 
 ---
 
-## API Endpoints Documentation
+## API (new)
 
-FastAPI automatically generates an interactive Swagger interface at `http://localhost:8000/docs`.
+- `POST /api/compare` — multipart `image_a`, `image_b`  
+- `POST /api/tryon` — multipart `person_image`, `garment_images` (+ optional `category`, `mode`)  
+- `GET /api/tryon/status` — provider config / cost notes  
+- `POST /api/fetch-product-image` — JSON `{ "url": "https://..." }`  
 
-### 📂 Dataset Endpoints
-
-- **`GET /api/classes`**:
-  Gathers all target directories under `dataset/`, maps current count of items, and bundles the most recent 6 samples as small Base64 previews for instant UI thumbnail load.
-- **`POST /api/upload-sample`**:
-  Accepts form data containing `class_name` and a list of `images` files. Images are validated, resized to a maximum of 640px to conserve disk footprint, and saved using secure UUID filenames.
-- **`POST /api/class/rename`**:
-  Accepts form fields `old_name` and `new_name`. Dynamically renames the folder on disk.
-- **`DELETE /api/class/{name}`**:
-  Wipes a target folder and all its images from the disk.
-- **`DELETE /api/sample/{class_name}/{id}`**:
-  Deletes an individual image in a specific class folder by UUID.
-
-### 🧠 Machine Learning Endpoints
-
-- **`POST /api/train`**:
-  Extracts 576-dimensional feature representations using MobileNetV3 small, fits a multinomial Logistic Regression classifier on the dataset, writes `model.pkl`, `labels.json`, and `metrics.json` inside the `models/` directory, and returns performance statistics (accuracy, fit time).
-- **`POST /api/predict`**:
-  Accepts a JSON payload `{ "image": "data:image/jpeg;base64,..." }`. Performs identical preprocessing (ImageNet normalization), runs feature extraction, and feeds vectors to the active model to compute probabilities for all classes.
-- **`POST /api/export-model`**:
-  Compresses `model.pkl`, `labels.json`, and `metrics.json` into a single zip archive and returns it as a streaming file download.
-- **`POST /api/reset`**:
-  Resets the project by wiping out `dataset/` and `models/` completely.
+Class Lab endpoints (`/upload-sample`, `/train`, `/predict`, …) remain available.
 
 ---
 
-## Troubleshooting & FAQ
+## Screenshots
 
-#### 1. Why is the "Train" button disabled?
-Ensure that:
-- The backend status dot is **Green** (ML Engine Online).
-- You have created at least **two separate classes** in the sidebar.
-- Every class card has **at least 1 image sample** uploaded or recorded.
-
-#### 2. The Webcam isn't loading!
-Webcams are restricted to **secure contexts** in modern browsers.
-- Ensure you are visiting `http://localhost:3000` (localhost is exempted from SSL requirements).
-- Check that other camera apps (like Zoom, Teams, or Skype) are closed so they release hardware locks.
-- Grant camera permissions to the site in your browser settings bar.
-
-#### 3. How fast is inference/training?
-Feature extraction and classifier training takes **less than 2 seconds** on CPU for up to 300 samples. Inference/prediction ticks run in background loops at **300ms intervals** and resolve in `< 15ms` per frame, providing smooth real-time progress bar animations.
+- Baseline (pre-change): `docs/baseline/baseline-home.png`  
+- Final: `docs/final/` (captured after UI upgrade)

@@ -11,13 +11,22 @@ from pydantic import BaseModel
 from PIL import Image
 
 import numpy as np
-from sklearn.linear_model import LogisticRegression
-from app.ml.pipeline import train_classifier, LivePredictor, extract_features_from_image
 
-# Establish paths relative to this file
+# Local Class Lab uses PyTorch MobileNet; serverless uses Bedrock stubs.
+if os.getenv("OUTFITLENS_SERVERLESS", "").lower() in {"1", "true", "yes"}:
+    from app.ml.pipeline_stub import train_classifier, LivePredictor, extract_features_from_image
+else:
+    from app.ml.pipeline import train_classifier, LivePredictor, extract_features_from_image
+
+# Establish paths relative to this file.
+# On AWS Lambda the deployment package is read-only — use /tmp instead.
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DATASET_DIR = os.path.join(BASE_DIR, "dataset")
-MODELS_DIR = os.path.join(BASE_DIR, "models")
+if os.getenv("OUTFITLENS_SERVERLESS", "").lower() in {"1", "true", "yes"} or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+    DATASET_DIR = os.path.join("/tmp", "outfitlens", "dataset")
+    MODELS_DIR = os.path.join("/tmp", "outfitlens", "models")
+else:
+    DATASET_DIR = os.path.join(BASE_DIR, "dataset")
+    MODELS_DIR = os.path.join(BASE_DIR, "models")
 
 # Initialize global predictor
 predictor = LivePredictor(MODELS_DIR)
@@ -28,7 +37,7 @@ router = APIRouter()
 class PredictRequest(BaseModel):
     image: str  # Can be base64 string or data URL (e.g. data:image/jpeg;base64,...)
 
-# Ensure folders exist
+# Ensure folders exist (writable path on Lambda)
 os.makedirs(DATASET_DIR, exist_ok=True)
 os.makedirs(MODELS_DIR, exist_ok=True)
 
@@ -264,6 +273,7 @@ async def evaluate():
     if len(X) < 4:
         raise HTTPException(status_code=400, detail="Please upload at least 4 total images to perform evaluation.")
         
+    from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import StratifiedKFold, cross_val_score
     from sklearn.metrics import precision_recall_fscore_support, accuracy_score
     
@@ -423,8 +433,126 @@ async def reset():
 @router.get("/health")
 async def health():
     """Basic health check and backend diagnostic."""
+    from app.services.tryon import tryon_status
+
     return {
         "status": "healthy",
+        "product": "OutfitLens",
         "has_model": predictor.is_trained(),
-        "classes_count": len(os.listdir(DATASET_DIR)) if os.path.exists(DATASET_DIR) else 0
+        "classes_count": len(os.listdir(DATASET_DIR)) if os.path.exists(DATASET_DIR) else 0,
+        "tryon": tryon_status(),
     }
+
+
+# ---------------------------------------------------------------------------
+# OutfitLens — Image Compare & Virtual Try-On
+# ---------------------------------------------------------------------------
+
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp"}
+MAX_COMPARE_BYTES = 8_000_000
+
+
+def _validate_upload(file: UploadFile, contents: bytes) -> None:
+    if not contents:
+        raise HTTPException(status_code=400, detail=f"Empty file: {file.filename or 'upload'}")
+    if len(contents) > MAX_COMPARE_BYTES:
+        raise HTTPException(status_code=400, detail="Each image must be 8MB or smaller.")
+    content_type = (file.content_type or "").lower()
+    name = (file.filename or "").lower()
+    ext_ok = name.endswith((".jpg", ".jpeg", ".png", ".webp"))
+    type_ok = content_type in ALLOWED_IMAGE_TYPES or content_type == "application/octet-stream"
+    if not (ext_ok or type_ok):
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Use PNG, JPG, or WebP.",
+        )
+    try:
+        Image.open(io.BytesIO(contents)).verify()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid image file: {exc}") from exc
+
+
+@router.post("/compare")
+async def compare_images_endpoint(
+    image_a: UploadFile = File(...),
+    image_b: UploadFile = File(...),
+):
+    """
+    Visual similarity between two images using MobileNetV3 embeddings.
+    This is NOT virtual try-on and NOT identity verification.
+    """
+    bytes_a = await image_a.read()
+    bytes_b = await image_b.read()
+    _validate_upload(image_a, bytes_a)
+    _validate_upload(image_b, bytes_b)
+
+    use_bedrock = os.getenv("USE_BEDROCK_COMPARE", "").lower() in {"1", "true", "yes"} or os.getenv(
+        "OUTFITLENS_SERVERLESS", ""
+    ).lower() in {"1", "true", "yes"}
+
+    try:
+        if use_bedrock:
+            from app.ml.bedrock_compare import compare_images
+        else:
+            try:
+                from app.ml.compare import compare_images
+            except Exception:
+                from app.ml.bedrock_compare import compare_images
+        return compare_images(bytes_a, bytes_b)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Comparison failed: {exc}") from exc
+
+
+class ProductUrlRequest(BaseModel):
+    url: str
+
+
+@router.post("/fetch-product-image")
+async def fetch_product_image_endpoint(request: ProductUrlRequest):
+    """Fetch a public product page image when metadata is available."""
+    from app.services.product_url import fetch_product_image
+
+    return await fetch_product_image(request.url)
+
+
+@router.get("/tryon/status")
+async def tryon_status_endpoint():
+    from app.services.tryon import tryon_status
+
+    return tryon_status()
+
+
+@router.post("/tryon")
+async def tryon_endpoint(
+    person_image: UploadFile = File(...),
+    garment_images: List[UploadFile] = File(...),
+    category: str = Form("auto"),
+    mode: str = Form("balanced"),
+):
+    """
+    AI virtual try-on via fal.ai FASHN v1.6.
+    Requires FAL_KEY. Classification alone cannot perform try-on.
+    """
+    from app.services.tryon import run_tryon
+
+    person_bytes = await person_image.read()
+    _validate_upload(person_image, person_bytes)
+
+    garment_bytes_list: List[bytes] = []
+    garment_types: List[str] = []
+    for g in garment_images:
+        g_bytes = await g.read()
+        _validate_upload(g, g_bytes)
+        garment_bytes_list.append(g_bytes)
+        garment_types.append((g.content_type or "image/jpeg").lower())
+
+    return await run_tryon(
+        person_bytes=person_bytes,
+        garment_bytes_list=garment_bytes_list,
+        category=category,
+        mode=mode,
+        person_content_type=(person_image.content_type or "image/jpeg").lower(),
+        garment_content_types=garment_types,
+    )

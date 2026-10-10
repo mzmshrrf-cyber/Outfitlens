@@ -1,0 +1,180 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: OutfitLens cost-optimized — API Gateway + Lambda (Bedrock) + S3/CloudFront
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: outfitlens
+  ArtifactBucketName:
+    Type: String
+  FrontendBucketName:
+    Type: String
+  LambdaZipKey:
+    Type: String
+    Default: artifacts/api.zip
+
+Resources:
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: BedrockInvoke
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                  - bedrock:Converse
+                Resource: '*'
+
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-api'
+      Runtime: python3.12
+      Handler: lambda_handler.handler
+      Role: !GetAtt LambdaRole.Arn
+      Timeout: 120
+      MemorySize: 1024
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          OUTFITLENS_SERVERLESS: "1"
+          USE_BEDROCK_COMPARE: "1"
+          BEDROCK_VISION_MODEL_ID: amazon.nova-lite-v1:0
+          BEDROCK_IMAGE_MODEL_ID: us.stability.stable-image-search-replace-v1:0
+          BEDROCK_EMBED_MODEL_ID: amazon.titan-embed-image-v1
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Ref LambdaZipKey
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${ProjectName}-http'
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+          - POST
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - '*'
+        MaxAge: 86400
+
+  LambdaIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ApiFunction.Arn
+      PayloadFormatVersion: '2.0'
+      TimeoutInMillis: 30000
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: '$default'
+      Target: !Sub 'integrations/${LambdaIntegration}'
+
+  ApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: '$default'
+      AutoDeploy: true
+
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ApiFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
+
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${ProjectName}-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: OutfitLens frontend
+        DefaultRootObject: index.html
+        Origins:
+          - Id: S3Origin
+            DomainName: !Sub '${FrontendBucketName}.s3.${AWS::Region}.amazonaws.com'
+            OriginAccessControlId: !GetAtt CloudFrontOAC.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        PriceClass: PriceClass_100
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucketName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub 'arn:aws:s3:::${FrontendBucketName}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+
+Outputs:
+  ApiEndpoint:
+    Description: OutfitLens API base URL
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+  CloudFrontURL:
+    Description: OutfitLens website URL
+    Value: !Sub 'https://${Distribution.DomainName}'
+  FrontendBucketName:
+    Value: !Ref FrontendBucketName
+  DistributionId:
+    Value: !Ref Distribution

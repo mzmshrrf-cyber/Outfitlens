@@ -1,37 +1,34 @@
 'use client';
 
-import React, { useEffect } from 'react';
-import Navbar from '../components/Navbar';
+import React, { useEffect, useState } from 'react';
+import AppHeader, { AppMode } from '../components/AppHeader';
+import ImageCompare from '../components/ImageCompare';
+import VirtualTryOn from '../components/VirtualTryOn';
 import ClassCard from '../components/ClassCard';
 import Predictor from '../components/Predictor';
 import TrainingDashboard from '../components/TrainingDashboard';
-import ConnectorLines from '../components/ConnectorLines';
 import { useProjectStore } from '../store/useProjectStore';
 import { Plus } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 
-export default function Home() {
+function ClassLab() {
   const {
     classes,
     backendOnline,
     isCheckingStatus,
     checkBackendStatus,
     loadClasses,
-    addClass
+    addClass,
   } = useProjectStore();
 
-  // 1. Initial health ping and sync dataset classes
   useEffect(() => {
     const initApp = async () => {
       const isOnline = await checkBackendStatus();
-      if (isOnline) {
-        await loadClasses();
-      }
+      if (isOnline) await loadClasses();
     };
     initApp();
   }, [checkBackendStatus, loadClasses]);
 
-  // 2. Prepopulate 2 default classes if starting a fresh project (0 classes)
   useEffect(() => {
     if (!isCheckingStatus && classes.length === 0) {
       const populateDefaults = async () => {
@@ -46,17 +43,13 @@ export default function Home() {
     }
   }, [classes.length, isCheckingStatus, addClass]);
 
-  // 3. Action to append a new class automatically (e.g. Class 3, Class 4)
   const handleAddNewClass = async () => {
     let suffix = classes.length + 1;
     let name = `Class ${suffix}`;
-    
-    // Ensure we do not duplicate names in edge cases
-    while (classes.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+    while (classes.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
       suffix++;
       name = `Class ${suffix}`;
     }
-
     try {
       await addClass(name);
     } catch (e: any) {
@@ -65,53 +58,61 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f1f3f4] relative overflow-hidden">
-      {/* Navbar Header */}
-      <Navbar />
+    <section className="animate-ol-rise mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8" aria-labelledby="lab-heading">
+      <div className="mb-6 max-w-2xl">
+        <h1 id="lab-heading" className="font-display text-3xl font-bold text-[var(--ink)]">
+          Class Lab
+        </h1>
+        <p className="mt-2 text-sm text-[var(--muted)]">
+          Optional local classifier workspace (MobileNet features + logistic regression). This is
+          <strong> not </strong> virtual try-on — use AI Virtual Try-On for garment previews.
+          {!backendOnline && ' Backend appears offline.'}
+        </p>
+      </div>
 
-      {/* Dynamic SVG Workflow lines layer behind elements */}
-      <ConnectorLines />
+      <div className="flex flex-col items-start justify-center gap-6 lg:flex-row">
+        <div className="flex w-full flex-1 flex-col gap-4 lg:max-w-2xl">
+          <AnimatePresence mode="popLayout">
+            {classes.map((cls) => (
+              <ClassCard key={cls.name} className={cls.name} />
+            ))}
+          </AnimatePresence>
+          <button
+            type="button"
+            onClick={handleAddNewClass}
+            className="ol-btn ol-btn-ghost w-full border-dashed py-4 uppercase tracking-wider"
+          >
+            <Plus className="h-4 w-4" />
+            Add a class
+          </button>
+        </div>
 
-      {/* Main Core 3-Column Workspace Canvas */}
-      <main className="flex-grow flex flex-col lg:flex-row gap-0 pt-28 pb-12 px-8 max-w-[1600px] mx-auto w-full items-start justify-center relative z-10">
-        
-        {/* Column 1: Classes & Datasets (~45% width on desktop) */}
-        <section className="flex-1 flex flex-col gap-4 lg:max-w-2xl w-full">
-          <div className="flex flex-col gap-4 w-full">
-            <AnimatePresence mode="popLayout">
-              {classes.map((cls) => (
-                <ClassCard key={cls.name} className={cls.name} />
-              ))}
-            </AnimatePresence>
-            
-            {/* Google TM Style "+ Add a class" Dashed Card at the bottom of the list */}
-            <button
-              onClick={handleAddNewClass}
-              className="w-full py-4 border-2 border-dashed border-[#dadce0] hover:border-[#1a73e8] bg-white/70 hover:bg-white text-slate-500 hover:text-[#1a73e8] rounded-xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider transition-all duration-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)] active:scale-[0.99]"
-            >
-              <Plus className="h-4.5 w-4.5" />
-              <span>Add a class</span>
-            </button>
-          </div>
-        </section>
-
-        {/* Spacing gap for dynamic SVG connector lines */}
-        <div className="hidden lg:block shrink-0 w-16" />
-
-        {/* Column 2: Training Controls & Advanced Parameters (~22% width) */}
-        <section className="w-full lg:w-72 shrink-0">
+        <div className="w-full shrink-0 lg:w-72">
           <TrainingDashboard />
-        </section>
+        </div>
 
-        {/* Spacing gap for dynamic SVG connector lines */}
-        <div className="hidden lg:block shrink-0 w-16" />
-
-        {/* Column 3: Live Inference Test, Predictions, and Export (~33% width) */}
-        <section className="flex-1 lg:max-w-md w-full shrink-0">
+        <div className="w-full shrink-0 lg:max-w-md">
           <Predictor />
-        </section>
+        </div>
+      </div>
+    </section>
+  );
+}
 
+export default function Home() {
+  const [mode, setMode] = useState<AppMode>('compare');
+
+  return (
+    <div className="ol-shell flex min-h-screen flex-col">
+      <AppHeader mode={mode} onModeChange={setMode} />
+      <main id="main" className="flex-grow pb-16">
+        {mode === 'compare' && <ImageCompare />}
+        {mode === 'tryon' && <VirtualTryOn />}
+        {mode === 'lab' && <ClassLab />}
       </main>
+      <footer className="border-t border-[var(--line)] bg-white/50 py-4 text-center text-xs text-[var(--muted)]">
+        OutfitLens · local-first image tools · not affiliated with Google Teachable Machine
+      </footer>
     </div>
   );
 }

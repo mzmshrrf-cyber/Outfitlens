@@ -11,6 +11,8 @@ services:
       - PORT=8000
       - HOST=0.0.0.0
       - TORCH_HOME=/app/torch_cache
+      - FAL_KEY=${FAL_KEY:-}
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-}
     volumes:
       - ./backend/dataset:/app/dataset
       - ./backend/models:/app/models

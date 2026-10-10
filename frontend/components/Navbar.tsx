@@ -26,8 +26,8 @@ export default function Navbar() {
         <button className="p-1.5 hover:bg-slate-100 rounded-full transition text-[#5f6368]" title="Menu">
           <Menu className="h-5 w-5" />
         </button>
-        <span className="text-xl font-bold tracking-tight text-[#1a73e8] select-none font-sans flex items-center gap-1.5">
-          Teachable Machine
+        <span className="text-xl font-bold tracking-tight text-[var(--brand)] select-none font-sans flex items-center gap-1.5">
+          OutfitLens
         </span>
       </div>
 

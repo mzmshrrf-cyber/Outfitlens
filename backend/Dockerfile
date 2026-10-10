@@ -18,8 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy only requirements first to leverage Docker cache
 COPY requirements.txt .
 
-# Install dependencies, emphasizing CPU-optimized builds
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies (CPU PyTorch wheels)
+RUN pip install --no-cache-dir -r requirements.txt \
+    --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Create cache directory for torchvision model weights
 RUN mkdir -p /app/torch_cache /app/dataset /app/models

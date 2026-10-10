@@ -1,7 +1,7 @@
 export interface PreviewSample {
   id: string;
   filename: string;
-  thumbnail: string; // Base64 JPEG data URL
+  thumbnail: string;
 }
 
 export interface ClassData {
@@ -25,10 +25,24 @@ export interface PredictionResult {
   probabilities: Record<string, number>;
 }
 
+export interface TryOnStatus {
+  provider: string;
+  model: string;
+  task?: string;
+  region?: string;
+  configured: boolean;
+  estimated_cost_usd_per_generation?: number;
+  estimated_cost_note?: string;
+  notes: string[];
+  setup: string;
+}
+
 export interface HealthStatus {
   status: string;
+  product?: string;
   has_model: boolean;
   classes_count: number;
+  tryon?: TryOnStatus;
 }
 
 export interface ClassReportDetails {
@@ -49,6 +63,40 @@ export interface DeepEvaluationResult {
   diagnosis: string;
 }
 
+export interface CompareResult {
+  similarity_score: number;
+  raw_cosine: number;
+  label: string;
+  explanation: string;
+  method: string;
+  limitations: string[];
+}
+
+export interface ProductImageResult {
+  supported: boolean;
+  source_url: string;
+  image_url: string;
+  image_data_url: string;
+  message: string;
+}
+
+export interface TryOnResult {
+  provider: string;
+  model: string;
+  category: string;
+  mode: string;
+  garment_count: number;
+  result_url: string;
+  result_data_url?: string | null;
+  steps: Array<{
+    garment_index: number;
+    result_url: string;
+    result_data_url?: string | null;
+  }>;
+  disclaimer: string;
+  estimated_cost_usd: number;
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 class ApiService {
@@ -61,10 +109,13 @@ class ApiService {
         try {
           const errData = await response.json();
           errorMsg = errData.detail || errorMsg;
+          if (Array.isArray(errorMsg)) {
+            errorMsg = errorMsg.map((e: any) => e.msg || JSON.stringify(e)).join('; ');
+          }
         } catch {
-          // ignore parsing error if not JSON
+          // ignore
         }
-        throw new Error(errorMsg);
+        throw new Error(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
       }
       return (await response.json()) as T;
     } catch (error) {
@@ -84,72 +135,83 @@ class ApiService {
   async uploadSample(className: string, files: File[]): Promise<{ message: string; samples: any[] }> {
     const formData = new FormData();
     formData.append('class_name', className);
-    files.forEach((file) => {
-      formData.append('images', file);
-    });
-
-    return this.request<{ message: string; samples: any[] }>('/upload-sample', {
-      method: 'POST',
-      body: formData,
-    });
+    files.forEach((file) => formData.append('images', file));
+    return this.request('/upload-sample', { method: 'POST', body: formData });
   }
 
   async deleteClass(className: string): Promise<{ message: string }> {
-    return this.request<{ message: string }>(`/class/${encodeURIComponent(className)}`, {
-      method: 'DELETE',
-    });
+    return this.request(`/class/${encodeURIComponent(className)}`, { method: 'DELETE' });
   }
 
   async renameClass(oldName: string, newName: string): Promise<{ message: string }> {
     const formData = new FormData();
     formData.append('old_name', oldName);
     formData.append('new_name', newName);
-
-    return this.request<{ message: string }>('/class/rename', {
-      method: 'POST',
-      body: formData,
-    });
+    return this.request('/class/rename', { method: 'POST', body: formData });
   }
 
   async deleteSample(className: string, sampleId: string): Promise<{ message: string }> {
-    return this.request<{ message: string }>(
+    return this.request(
       `/sample/${encodeURIComponent(className)}/${encodeURIComponent(sampleId)}`,
-      {
-        method: 'DELETE',
-      }
+      { method: 'DELETE' }
     );
   }
 
   async trainModel(): Promise<{ status: string; message: string; metrics: TrainingMetrics }> {
-    return this.request<{ status: string; message: string; metrics: TrainingMetrics }>('/train', {
-      method: 'POST',
-    });
+    return this.request('/train', { method: 'POST' });
   }
 
   async evaluateModel(): Promise<DeepEvaluationResult> {
-    return this.request<DeepEvaluationResult>('/evaluate', {
-      method: 'POST',
-    });
+    return this.request('/evaluate', { method: 'POST' });
   }
 
   async predictImage(base64Image: string): Promise<PredictionResult> {
-    return this.request<PredictionResult>('/predict', {
+    return this.request('/predict', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: base64Image }),
     });
   }
 
   async resetProject(): Promise<{ message: string }> {
-    return this.request<{ message: string }>('/reset', {
-      method: 'POST',
-    });
+    return this.request('/reset', { method: 'POST' });
   }
 
   exportModelUrl(): string {
     return `${API_BASE_URL}/export-model`;
+  }
+
+  async compareImages(imageA: File, imageB: File): Promise<CompareResult> {
+    const formData = new FormData();
+    formData.append('image_a', imageA);
+    formData.append('image_b', imageB);
+    return this.request('/compare', { method: 'POST', body: formData });
+  }
+
+  async fetchProductImage(url: string): Promise<ProductImageResult> {
+    return this.request('/fetch-product-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+  }
+
+  async getTryOnStatus(): Promise<TryOnStatus> {
+    return this.request('/tryon/status');
+  }
+
+  async runTryOn(
+    personImage: File,
+    garmentImages: File[],
+    category: string = 'auto',
+    mode: string = 'balanced'
+  ): Promise<TryOnResult> {
+    const formData = new FormData();
+    formData.append('person_image', personImage);
+    garmentImages.forEach((file) => formData.append('garment_images', file));
+    formData.append('category', category);
+    formData.append('mode', mode);
+    return this.request('/tryon', { method: 'POST', body: formData });
   }
 }
 

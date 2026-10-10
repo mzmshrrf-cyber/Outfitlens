@@ -1,14 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Static export for S3 + CloudFront (cost-optimized AWS hosting)
+  output: process.env.OUTFITLENS_STATIC_EXPORT === '1' ? 'export' : undefined,
+  images: { unoptimized: true },
+  trailingSlash: true,
   eslint: {
-    // Avoid blocking builds due to lint issues in production
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // Avoid blocking builds due to type checking issues in production
     ignoreBuildErrors: true,
-  }
+  },
 };
 
 module.exports = nextConfig;

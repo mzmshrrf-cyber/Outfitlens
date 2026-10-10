@@ -1,12 +1,17 @@
-# Dependency directories
+# Dependencies
 node_modules/
 venv/
+.venv/
+
+# Build / export
 .next/
 out/
 build/
 dist/
+frontend/out/
+frontend/.next/
 
-# Python caching & builds
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -15,27 +20,31 @@ __pycache__/
 .mypy_cache/
 *.egg-info/
 
-# Local data & ML models (datasets and weights should not be committed)
+# Local data & ML artifacts
 backend/dataset/
 backend/models/
 backend/torch_cache/
 torch_cache/
 
-# Environment files
+# Environment / secrets (never commit)
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
 frontend/.env
 frontend/.env.local
+backend/.env
 
-# OS files
+# OS / editor
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
 
-# Temp / Zip files
+# Archives / temp
 *.zip
 *.tar.gz
 *.rar
 temp_dist/
+.backup-path.txt
+docs/final/fixtures/
+backend/.lambda-package/

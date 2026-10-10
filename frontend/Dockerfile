@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Copy dependency configs
 COPY package.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 # Rebuild source code only when changed
 FROM node:18-alpine AS builder
